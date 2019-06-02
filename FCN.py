@@ -7,6 +7,8 @@ import read_MITSceneParsingData as scene_parsing
 import datetime
 import BatchDatsetReader as dataset
 from six.moves import xrange
+import shutil
+import os
 
 FLAGS = tf.flags.FLAGS
 tf.flags.DEFINE_integer("batch_size", "2", "batch size for training")
@@ -15,7 +17,7 @@ tf.flags.DEFINE_string("data_dir", "Data_zoo/MIT_SceneParsing/", "path to datase
 tf.flags.DEFINE_float("learning_rate", "1e-4", "Learning rate for Adam Optimizer")
 tf.flags.DEFINE_string("model_dir", "Model_zoo/", "Path to vgg model mat")
 tf.flags.DEFINE_bool('debug', "False", "Debug mode: True/ False")
-tf.flags.DEFINE_string('mode', "train", "Mode train/ test/ visualize")
+tf.flags.DEFINE_string('mode', "visualize", "Mode train/ test/ visualize")
 
 MODEL_URL = 'http://www.vlfeat.org/matconvnet/models/beta16/imagenet-vgg-verydeep-19.mat'
 
@@ -160,6 +162,15 @@ def main(argv=None):
             utils.add_to_regularization_and_summary(var)
     train_op = train(loss, trainable_var)
 
+
+    # Variables
+    inputs = {
+        "input_image": image,
+        "keep_probability": keep_probability,
+        "annotation": annotation,
+    }
+    outputs = {"pred_annotation": pred_annotation}    
+
     print("Setting up summary op...")
     summary_op = tf.summary.merge_all()
 
@@ -200,7 +211,14 @@ def main(argv=None):
             if itr % 10 == 0:
                 train_loss, summary_str = sess.run([loss, loss_summary], feed_dict=feed_dict)
                 print("Step: %d, Train_loss:%g" % (itr, train_loss))
-                train_writer.add_summary(summary_str, itr)
+                train_writer.add_summary(summary_str, itr)  
+
+                #print('############### Printing variables 1')
+                #for n in tf.get_default_graph().as_graph_def().node:
+                #    print(n.name)
+
+                #print('############### Printing variables 2')
+                #[t.name for op in tf.get_default_graph().get_operations() for t in op.values()]
 
             if itr % 500 == 0:
                 valid_images, valid_annotations = validation_dataset_reader.next_batch(FLAGS.batch_size)
@@ -212,10 +230,27 @@ def main(argv=None):
                 validation_writer.add_summary(summary_sva, itr)
                 saver.save(sess, FLAGS.logs_dir + "model.ckpt", itr)
 
+                saved_model_dir = FLAGS.logs_dir+'saved_model/'
+
+                if os.path.exists(saved_model_dir) and os.path.isdir(saved_model_dir):
+                    shutil.rmtree(saved_model_dir)                
+
+                tf.saved_model.simple_save(sess, saved_model_dir, inputs, outputs
+            )   
     elif FLAGS.mode == "visualize":
         valid_images, valid_annotations = validation_dataset_reader.get_random_batch(FLAGS.batch_size)
-        pred = sess.run(pred_annotation, feed_dict={image: valid_images, annotation: valid_annotations,
-                                                    keep_probability: 1.0})
+        #pred = sess.run(pred_annotation, feed_dict={image: valid_images, annotation: valid_annotations,
+        #                                            keep_probability: 1.0})
+
+        predTensor = tf.get_default_graph().get_tensor_by_name("ExpandDims:0")
+        # pred = 'pred_annotation:0'
+        pred = sess.run(predTensor,  # 'pred_annotation:0'
+                          feed_dict={'input_image:0': valid_images,
+                                     'annotation:0': valid_annotations, 'keep_probabilty:0': 1.0})
+
+        #pred = sess.run(pred_annotation, feed_dict={image: valid_images[0].reshape(1, 224,224,3), annotation: valid_annotations[1].reshape(1, 224,224,1),
+        #                                            keep_probability: 1.0})
+
         valid_annotations = np.squeeze(valid_annotations, axis=3)
         pred = np.squeeze(pred, axis=3)
 
