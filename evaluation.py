@@ -27,7 +27,7 @@ if __name__ == '__main__':
     depth_filename = '/opt/project/tests/dataset/png/depth/depth_00000.png'
 
     with tf.Session(graph=tf.Graph()) as sess:
-        tf.saved_model.loader.load(sess, ["serve"], 'fcn_tensorflow/')
+        tf.saved_model.loader.load(sess, ["serve"], 'logs2/saved_model')
         graph = tf.get_default_graph()
         pred = graph.get_tensor_by_name("ExpandDims:0")
         output = sess.run(pred, #'pred_annotation:0'
