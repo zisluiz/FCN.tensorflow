@@ -31,6 +31,7 @@ if __name__ == '__main__':
         graph = tf.get_default_graph()
         pred = graph.get_tensor_by_name("ExpandDims:0")
         output = sess.run(pred, #'pred_annotation:0'
-                feed_dict={'input_image:0': _transform(rgb_filename, True), 'annotation:0': _transform(depth_filename, False), 'keep_probabilty:0': 1.0})
+                feed_dict={'input_image:0': _transform(rgb_filename, True), 'annotation:0': 
+            np.expand_dims(_transform(depth_filename, False), axis=3), 'keep_probabilty:0': 1.0})
         output = np.squeeze(output, axis=3)
         misc.imsave(os.path.join('/opt/project/tests/results/', 'pred_00000.png'), output[0].astype(np.uint8))

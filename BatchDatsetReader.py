@@ -3,7 +3,7 @@ Code ideas from https://github.com/Newmu/dcgan and tensorflow mnist dataset read
 """
 import numpy as np
 import scipy.misc as misc
-
+import cv2
 
 class BatchDatset:
     files = []
@@ -32,26 +32,25 @@ class BatchDatset:
 
     def _read_images(self):
         self.__channels = True
-        self.images = np.array([self._transform(filename['image']) for filename in self.files])
+        self.images = np.array([self._transform(filename['image'], False) for filename in self.files])
         self.__channels = False
         self.annotations = np.array(
-            [np.expand_dims(self._transform(filename['annotation']), axis=3) for filename in self.files])
+            [np.expand_dims(self._transform(filename['annotation'], True), axis=3) for filename in self.files])
         print (self.images.shape)
         print (self.annotations.shape)
 
-    def _transform(self, filename):
-        image = misc.imread(filename)
+    def _transform(self, filename, grayscale):
+        image = cv2.imread(filename, cv2.IMREAD_GRAYSCALE if grayscale else cv2.IMREAD_COLOR)
         if self.__channels and len(image.shape) < 3:  # make sure images are of shape(h,w,3)
             image = np.array([image for i in range(3)])
 
         if self.image_options.get("resize", False) and self.image_options["resize"]:
             resize_size = int(self.image_options["resize_size"])
-            resize_image = misc.imresize(image,
-                                         [resize_size, resize_size], interp='nearest')
+            resize_image = cv2.resize(image, (resize_size, resize_size))
         else:
             resize_image = image
 
-        return np.array(resize_image)
+        return resize_image
 
     def get_records(self):
         return self.images, self.annotations

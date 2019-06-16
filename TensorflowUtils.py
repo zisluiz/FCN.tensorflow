@@ -3,6 +3,7 @@ __author__ = 'Charlie'
 import tensorflow as tf
 import numpy as np
 import scipy.misc as misc
+import cv2
 import os, sys
 from six.moves import urllib
 import tarfile
@@ -54,7 +55,7 @@ def save_image(image, save_dir, name, mean=None):
     """
     if mean:
         image = unprocess_image(image, mean)
-    misc.imsave(os.path.join(save_dir, name + ".png"), image)
+    cv2.imwrite(os.path.join(save_dir, name + ".png"), image)
 
 
 def get_variable(weights, name):
