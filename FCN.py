@@ -4,12 +4,14 @@ import numpy as np
 
 import TensorflowUtils as utils
 import read_MITSceneParsingData as scene_parsing
+import read_SUNRGBDData as sunrgbd_parsing
 import datetime
 import BatchDatsetReader as dataset
 from six.moves import xrange
 import shutil
 import os
 
+#python3 FCN.py dataset sunrgbd data_dir Data_zoo/SUNRGBD_dataset/
 FLAGS = tf.flags.FLAGS
 tf.flags.DEFINE_integer("batch_size", "2", "batch size for training")
 tf.flags.DEFINE_string("logs_dir", "logs/", "path to logs directory")
@@ -18,6 +20,7 @@ tf.flags.DEFINE_float("learning_rate", "1e-4", "Learning rate for Adam Optimizer
 tf.flags.DEFINE_string("model_dir", "Model_zoo/", "Path to vgg model mat")
 tf.flags.DEFINE_bool('debug', "False", "Debug mode: True/ False")
 tf.flags.DEFINE_string('mode', "visualize", "Mode train/ test/ visualize")
+tf.flags.DEFINE_string('dataset', "mit", "Dataset mit / sunrgbd")
 
 MODEL_URL = 'http://www.vlfeat.org/matconvnet/models/beta16/imagenet-vgg-verydeep-19.mat'
 
@@ -175,7 +178,11 @@ def main(argv=None):
     summary_op = tf.summary.merge_all()
 
     print("Setting up image reader...")
-    train_records, valid_records = scene_parsing.read_dataset(FLAGS.data_dir)
+    if FLAGS.dataset == 'mit':
+        train_records, valid_records = scene_parsing.read_dataset(FLAGS.data_dir)
+    else:
+        train_records, valid_records = sunrgbd_parsing.read_dataset(FLAGS.data_dir)
+
     print(len(train_records))
     print(len(valid_records))
 
