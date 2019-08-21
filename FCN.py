@@ -4,6 +4,7 @@ import numpy as np
 
 import TensorflowUtils as utils
 import read_MITSceneParsingData as scene_parsing
+import read_SUNRGBDData as sunrgbd_parsing
 import datetime
 import BatchDatsetReader as dataset
 from six.moves import xrange
@@ -18,11 +19,15 @@ tf.flags.DEFINE_float("learning_rate", "1e-4", "Learning rate for Adam Optimizer
 tf.flags.DEFINE_string("model_dir", "Model_zoo/", "Path to vgg model mat")
 tf.flags.DEFINE_bool('debug', "False", "Debug mode: True/ False")
 tf.flags.DEFINE_string('mode', "train", "Mode train/ test/ visualize")
+tf.flags.DEFINE_string('dataset', "mit", "Dataset mit / sunrgbd")
 
 MODEL_URL = 'http://www.vlfeat.org/matconvnet/models/beta16/imagenet-vgg-verydeep-19.mat'
 
 MAX_ITERATION = int(1e5 + 1)
-NUM_OF_CLASSESS = 151
+if FLAGS.dataset == 'sunrgbd':
+    NUM_OF_CLASSESS = 38
+else:
+    NUM_OF_CLASSESS = 151
 IMAGE_SIZE = 224
 
 
@@ -154,7 +159,19 @@ def main(argv=None):
     loss = tf.reduce_mean((tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits,
                                                                           labels=tf.squeeze(annotation, squeeze_dims=[3]),
                                                                           name="entropy")))
-    loss_summary = tf.summary.scalar("entropy", loss)
+
+    predTensor = tf.get_default_graph().get_tensor_by_name("ExpandDims:0")
+    accuracy, accuracy_update = tf.metrics.accuracy(predictions=predTensor, labels=annotation)
+    mean_IOU, mean_IOU_update = tf.metrics.mean_iou(predictions=predTensor, labels=annotation,
+                                                                      num_classes=NUM_OF_CLASSESS)
+    metrics_op = tf.group(accuracy_update, mean_IOU_update)
+
+    loss_summary = tf.summary.scalar("Monitor/entropy", loss)
+    accuracy_summary = tf.summary.scalar('Monitor/test_accuracy', accuracy)
+    mean_iou_summary = tf.summary.scalar('Monitor/test_mean_IOU', mean_IOU)
+    my_summary_op = tf.summary.merge_all()
+
+
 
     trainable_var = tf.trainable_variables()
     if FLAGS.debug:
@@ -175,12 +192,19 @@ def main(argv=None):
     summary_op = tf.summary.merge_all()
 
     print("Setting up image reader...")
-    train_records, valid_records = scene_parsing.read_dataset(FLAGS.data_dir)
+    if FLAGS.dataset == 'mit':
+        train_records, valid_records = scene_parsing.read_dataset(FLAGS.data_dir)
+    else:
+        train_records, valid_records = sunrgbd_parsing.read_dataset(FLAGS.data_dir)
+
     print(len(train_records))
     print(len(valid_records))
 
     print("Setting up dataset reader")
-    image_options = {'resize': True, 'resize_size': IMAGE_SIZE}
+    image_options = {}
+    if not FLAGS.dataset == 'sunrgbd':
+        image_options = {'resize': True, 'resize_size': IMAGE_SIZE}
+
     if FLAGS.mode == 'train':
         train_dataset_reader = dataset.BatchDatset(train_records, image_options)
     validation_dataset_reader = dataset.BatchDatset(valid_records, image_options)
@@ -196,6 +220,8 @@ def main(argv=None):
     validation_writer = tf.summary.FileWriter(FLAGS.logs_dir + '/validation')
 
     sess.run(tf.global_variables_initializer())
+    sess.run(tf.local_variables_initializer())
+
     ckpt = tf.train.get_checkpoint_state(FLAGS.logs_dir)
     if ckpt and ckpt.model_checkpoint_path:
         saver.restore(sess, ckpt.model_checkpoint_path)
@@ -211,32 +237,23 @@ def main(argv=None):
             if itr % 10 == 0:
                 train_loss, summary_str = sess.run([loss, loss_summary], feed_dict=feed_dict)
                 print("Step: %d, Train_loss:%g" % (itr, train_loss))
-                train_writer.add_summary(summary_str, itr)  
-
-                #print('############### Printing variables 1')
-                #for n in tf.get_default_graph().as_graph_def().node:
-                #    print(n.name)
-
-                #print('############### Printing variables 2')
-                #[t.name for op in tf.get_default_graph().get_operations() for t in op.values()]
+                train_writer.add_summary(summary_str, itr)
 
             if itr % 500 == 0:
+
                 valid_images, valid_annotations = validation_dataset_reader.next_batch(FLAGS.batch_size)
-                valid_loss, summary_sva = sess.run([loss, loss_summary], feed_dict={image: valid_images, annotation: valid_annotations,
-                                                       keep_probability: 1.0})
+                feed_dict_val = {image: valid_images, annotation: valid_annotations,
+                                                       keep_probability: 1.0}
+
+                confusion_matrix, _ = sess.run([accuracy_update, mean_IOU_update], feed_dict=feed_dict_val)
+                valid_loss, summary_sva, summary_acc, summary_miou = sess.run([loss, loss_summary, accuracy_summary, mean_iou_summary], feed_dict=feed_dict_val)
                 print("%s ---> Validation_loss: %g" % (datetime.datetime.now(), valid_loss))
 
                 # add validation loss to TensorBoard
                 validation_writer.add_summary(summary_sva, itr)
+                validation_writer.add_summary(summary_acc, itr)
+                validation_writer.add_summary(summary_miou, itr)
                 saver.save(sess, FLAGS.logs_dir + "model.ckpt", itr)
-
-                saved_model_dir = FLAGS.logs_dir+'saved_model/'
-
-                if os.path.exists(saved_model_dir) and os.path.isdir(saved_model_dir):
-                    shutil.rmtree(saved_model_dir)                
-
-                tf.saved_model.simple_save(sess, saved_model_dir, inputs, outputs
-            )   
     elif FLAGS.mode == "visualize":
         valid_images, valid_annotations = validation_dataset_reader.get_random_batch(FLAGS.batch_size)
         #pred = sess.run(pred_annotation, feed_dict={image: valid_images, annotation: valid_annotations,
