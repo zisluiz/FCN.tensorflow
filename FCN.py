@@ -1,3 +1,5 @@
+#python3 FCN.py --dataset sunrgbd --data_dir Data_zoo/SUNRGBD_dataset --debug True
+
 from __future__ import print_function
 import tensorflow as tf
 import numpy as np
@@ -153,18 +155,30 @@ def main(argv=None):
     annotation = tf.placeholder(tf.int32, shape=[None, IMAGE_SIZE, IMAGE_SIZE, 1], name="annotation")
 
     pred_annotation, logits = inference(image, keep_probability)
+    annotation_int8 = tf.cast(annotation, tf.uint8)
+    pred_int8 = tf.cast(pred_annotation, tf.uint8)
     tf.summary.image("input_image", image, max_outputs=2)
-    tf.summary.image("ground_truth", tf.cast(annotation, tf.uint8), max_outputs=2)
-    tf.summary.image("pred_annotation", tf.cast(pred_annotation, tf.uint8), max_outputs=2)
+    tf.summary.image("ground_truth", annotation_int8, max_outputs=2)
+    tf.summary.image("pred_annotation", pred_int8, max_outputs=2)
     loss = tf.reduce_mean((tf.nn.sparse_softmax_cross_entropy_with_logits(logits=logits,
                                                                           labels=tf.squeeze(annotation, squeeze_dims=[3]),
                                                                           name="entropy")))
 
-    predTensor = tf.get_default_graph().get_tensor_by_name("ExpandDims:0")
-    accuracy, accuracy_update = tf.metrics.accuracy(predictions=predTensor, labels=annotation)
-    mean_IOU, mean_IOU_update = tf.metrics.mean_iou(predictions=predTensor, labels=annotation,
-                                                                      num_classes=NUM_OF_CLASSESS)
-    metrics_op = tf.group(accuracy_update, mean_IOU_update)
+    #predTensor = tf.get_default_graph().get_tensor_by_name("ExpandDims:0")
+    #predictions = tf.argmax(pred_annotation, -1)
+    accuracy, accuracy_update = tf.metrics.accuracy(predictions=pred_int8, labels=annotation_int8,
+                                                      name="my_metric")
+    mean_IOU, mean_IOU_update = tf.metrics.mean_iou(predictions=pred_int8, labels=annotation_int8,
+                                                                      num_classes=NUM_OF_CLASSESS,
+                                                      name="my_metric")
+
+    # Isolate the variables stored behind the scenes by the metric operation
+    running_vars = tf.get_collection(tf.GraphKeys.LOCAL_VARIABLES, scope="my_metric")
+
+    # Define initializer to initialize/reset running variables
+    running_vars_initializer = tf.variables_initializer(var_list=running_vars)
+
+    #metrics_op = tf.group(accuracy_update, mean_IOU_update)
 
     loss_summary = tf.summary.scalar("Monitor/entropy", loss)
     accuracy_summary = tf.summary.scalar('Monitor/test_accuracy', accuracy)
@@ -227,6 +241,9 @@ def main(argv=None):
         saver.restore(sess, ckpt.model_checkpoint_path)
         print("Model restored...")
 
+    # initialize/reset the running variables
+    sess.run(running_vars_initializer)
+
     if FLAGS.mode == "train":
         for itr in xrange(MAX_ITERATION):
             train_images, train_annotations = train_dataset_reader.next_batch(FLAGS.batch_size)
@@ -235,26 +252,31 @@ def main(argv=None):
             sess.run(train_op, feed_dict=feed_dict)
 
             if itr % 10 == 0:
-                train_loss, summary_str = sess.run([loss, loss_summary], feed_dict=feed_dict)
+                train_loss, summary_str = sess.run([loss, my_summary_op], feed_dict=feed_dict)
                 print("Step: %d, Train_loss:%g" % (itr, train_loss))
                 train_writer.add_summary(summary_str, itr)
 
             if itr % 500 == 0:
-
                 valid_images, valid_annotations = validation_dataset_reader.next_batch(FLAGS.batch_size)
                 feed_dict_val = {image: valid_images, annotation: valid_annotations,
                                                        keep_probability: 1.0}
 
-                confusion_matrix, _ = sess.run([accuracy_update, mean_IOU_update], feed_dict=feed_dict_val)
-                valid_loss, summary_sva, summary_acc, summary_miou = sess.run([loss, loss_summary, accuracy_summary, mean_iou_summary], feed_dict=feed_dict_val)
+                sess.run([accuracy_update, mean_IOU_update], feed_dict=feed_dict_val)
+                sess.run([accuracy, mean_IOU], feed_dict=feed_dict_val)
+                valid_loss, summary_sva = sess.run([loss, my_summary_op], feed_dict=feed_dict_val)
                 print("%s ---> Validation_loss: %g" % (datetime.datetime.now(), valid_loss))
 
                 # add validation loss to TensorBoard
                 validation_writer.add_summary(summary_sva, itr)
-                validation_writer.add_summary(summary_acc, itr)
-                validation_writer.add_summary(summary_miou, itr)
                 saver.save(sess, FLAGS.logs_dir + "model.ckpt", itr)
-    elif FLAGS.mode == "visualize":
+
+                saved_model_dir = FLAGS.logs_dir + 'saved_model/'
+
+                if os.path.exists(saved_model_dir) and os.path.isdir(saved_model_dir):
+                    shutil.rmtree(saved_model_dir)
+
+                tf.saved_model.simple_save(sess, saved_model_dir, inputs, outputs)
+elif FLAGS.mode == "visualize":
         valid_images, valid_annotations = validation_dataset_reader.get_random_batch(FLAGS.batch_size)
         #pred = sess.run(pred_annotation, feed_dict={image: valid_images, annotation: valid_annotations,
         #                                            keep_probability: 1.0})
