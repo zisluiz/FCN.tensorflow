@@ -10,9 +10,13 @@ from datetime import datetime
 import time
 import nvidia_smi
 
-def _transform(filename, __channels):
+def _transform(filename, __channels, datasetName):
     image_options = {'resize': True, 'resize_size': 224}
     image = misc.imread(filename, flatten=False if __channels else True, mode='RGB' if __channels else 'P')
+
+    if datasetName == "active_vision" or datasetName == "putkk":
+        image = image[0:1080, 419:1499]
+
     if __channels and len(image.shape) < 3:  # make sure images are of shape(h,w,3)
         image = np.array([image for i in range(3)])
 
@@ -20,7 +24,7 @@ def _transform(filename, __channels):
         resize_size = int(image_options["resize_size"])
         resize_image = misc.imresize(image,
                                         [resize_size, resize_size], interp='nearest')
-        print('resized')
+        #print('resized')
     else:
         resize_image = image
 
@@ -65,7 +69,7 @@ if __name__ == '__main__':
             depthImageName = os.path.basename(imagePath).replace('jpg', 'png')
 
             output = sess.run(pred,  # 'pred_annotation:0'
-                              feed_dict={'input_image:0': _transform(imagePath, True), 'keep_probabilty:0': 1.0})
+                              feed_dict={'input_image:0': _transform(imagePath, True, datasetName), 'keep_probabilty:0': 1.0})
             output = np.squeeze(output, axis=3)
 
             res = nvidia_smi.nvmlDeviceGetUtilizationRates(handle)
@@ -114,7 +118,7 @@ if __name__ == '__main__':
             depthImageName = os.path.basename(imagePath).replace('jpg', 'png')
 
             output = sess.run(pred,  # 'pred_annotation:0'
-                              feed_dict={'input_image:0': _transform(imagePath, True), 'keep_probabilty:0': 1.0})
+                              feed_dict={'input_image:0': _transform(imagePath, True, datasetName), 'keep_probabilty:0': 1.0})
             output = np.squeeze(output, axis=3)
         end = time.time()
 
