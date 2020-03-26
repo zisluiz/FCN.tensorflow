@@ -9,21 +9,30 @@ import psutil
 from datetime import datetime
 import time
 import nvidia_smi
+import cv2
+
 
 def _transform(filename, __channels, datasetName):
     image_options = {'resize': True, 'resize_size': 224}
-    image = misc.imread(filename, flatten=False if __channels else True, mode='RGB' if __channels else 'P')
+    #image = misc.imread(filename, flatten=False if __channels else True, mode='RGB' if __channels else 'P')
+    image = cv2.imread(filename, cv2.IMREAD_COLOR if __channels else cv2.IMREAD_GRAYSCALE)
+
+    if __channels:
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
     if datasetName == "active_vision" or datasetName == "putkk":
-        image = image[0:1080, 419:1499]
+        image = image[0:1080, 420:1500]
+    elif datasetName == "semantics3d_raw":
+        image = image[0:1024, 128:1152]
 
     if __channels and len(image.shape) < 3:  # make sure images are of shape(h,w,3)
         image = np.array([image for i in range(3)])
 
     if image_options.get("resize", False) and image_options["resize"]:
         resize_size = int(image_options["resize_size"])
-        resize_image = misc.imresize(image,
-                                        [resize_size, resize_size], interp='nearest')
+        #resize_image = misc.imresize(image,
+        #                                [resize_size, resize_size], interp='nearest')
+        resize_image = cv2.resize(image, (resize_size, resize_size), interpolation=cv2.INTER_NEAREST)
         #print('resized')
     else:
         resize_image = image
@@ -31,20 +40,29 @@ def _transform(filename, __channels, datasetName):
     #array = np.array(resize_image)
     #array[array[:,:,3]==255,:3]
 
-    return resize_image.reshape(1, resize_size,resize_size,3 if __channels else 1)
+    return resize_image.reshape(1, resize_size, resize_size, 3 if __channels else 1)
 
 if __name__ == '__main__':
+    useGpu = False
+
+    fileName = "run_"
+    if not useGpu:
+        os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
+        fileName += "cpu_"
+
     os.makedirs('results', exist_ok=True)
-    f = open("results/run_"+str(int(round(time.time() * 1000)))+".txt", "w+")
+    f = open("results/"+fileName+str(int(round(time.time() * 1000)))+".txt", "w+")
     f.write('=== Start time: '+str(datetime.now())+'\n')
 
     p = psutil.Process(os.getpid())
     nvidia_smi.nvmlInit()
     handle = nvidia_smi.nvmlDeviceGetHandleByIndex(0)
 
-    with tf.Session(graph=tf.Graph()) as sess:
-        tf.saved_model.loader.load(sess, ["serve"], 'logs/saved_model')
+    graph = tf.Graph()
+    with tf.Session() as sess:
+        tf.saved_model.loader.load(sess, [tf.saved_model.tag_constants.SERVING], 'logs/saved_model/230000')
         graph = tf.get_default_graph()
+
         pred = graph.get_tensor_by_name("ExpandDims:0")
 
         print('Starting list image files')

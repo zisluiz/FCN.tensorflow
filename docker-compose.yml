@@ -5,6 +5,7 @@ services:
     environment:
       - DISPLAY=unix$DISPLAY
     volumes:
+      - /media/zis/DL/dev/datasets/:/usr/app/datasets/
       - /tmp/.X11-unix:/tmp/.X11-unix
       - /home/zis/.Xauthority:/root/.Xauthority
     network_mode: host
