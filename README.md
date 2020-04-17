@@ -1,4 +1,16 @@
-# FCN.tensorflow
+# FCN - Changes on this repository
+
+Added support to train SUNRGBD dataset.
+
+Added a run.py file that uses FCN prediction over a dataset named "mestrado", subdivided into four sets.
+
+This file also collect some statistics at run. Added "only cpu" option. 
+
+Added Dockerfile (builded with name "obeach") and docker-compose.yml with a image with compatible system requirements to run this project.
+
+Results obtained with "mestrado" dataset will be public available soon, comparing this approach with others semantic sgmentation algorithms.
+
+# FCN.tensorflow - original readme
 Tensorflow implementation of [Fully Convolutional Networks for Semantic Segmentation](http://arxiv.org/pdf/1605.06211v1.pdf) (FCNs). 
 
 The implementation is largely based on the reference code provided by the authors of the paper [link](https://github.com/shelhamer/fcn.berkeleyvision.org). The model was applied on the Scene Parsing Challenge dataset provided by MIT [http://sceneparsing.csail.mit.edu/](http://sceneparsing.csail.mit.edu/).
